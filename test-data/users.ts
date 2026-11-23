@@ -10,3 +10,8 @@ export const newPost = {
   body: 'bar',
   userId: 1,
 } as const;
+
+export const newUser = {
+  username: 'new_user',
+  password: 'secret_sauce',
+} as const;
