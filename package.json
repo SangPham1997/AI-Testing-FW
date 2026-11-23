@@ -8,12 +8,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "playwright test",
-    "test:ui": "playwright test --project=ui",
-    "test:api": "playwright test --project=api",
-    "test:headed": "playwright test --project=ui --headed",
-    "test:debug": "playwright test --debug",
+    "test": "npm run allure:clean && playwright test",
+    "test:ui": "npm run allure:clean && playwright test --project=ui",
+    "test:api": "npm run allure:clean && playwright test --project=api",
+    "test:headed": "npm run allure:clean && playwright test --project=ui --headed",
+    "test:debug": "npm run allure:clean && playwright test --debug",
+    "test:allure": "npm run allure:clean && playwright test && npm run allure:generate",
     "report": "playwright show-report reports/html-report",
+    "allure:generate": "node -e \"require('node:fs').rmSync('allure-report',{recursive:true,force:true})\" && allure generate allure-results -o allure-report",
+    "allure:open": "allure open allure-report",
+    "allure:clean": "node -e \"require('node:fs').rmSync('allure-results',{recursive:true,force:true})\"",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts"
   },
@@ -22,6 +26,8 @@
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^8.73.0",
     "@typescript-eslint/parser": "^8.73.0",
+    "allure": "3.15.0",
+    "allure-playwright": "3.15.0",
     "eslint": "^10.15.0",
     "typescript": "^5.9.3"
   }

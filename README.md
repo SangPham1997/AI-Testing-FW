@@ -15,6 +15,7 @@ Bộ khung kiểm thử tự động viết bằng **TypeScript + Playwright**, 
 - Node.js 20 LTS trở lên.
 - npm 10 trở lên.
 - Kết nối Internet tới `saucedemo.com` và `jsonplaceholder.typicode.com`.
+- Allure Report 3 dùng CLI npm, không cần cài Java.
 
 ## Cài đặt
 
@@ -36,7 +37,11 @@ Nếu chưa có `package-lock.json` (lần đầu khởi tạo), dùng `npm inst
 | `npm run test:debug` | Chạy Playwright Inspector |
 | `npm run typecheck` | Kiểm tra TypeScript, không emit file |
 | `npm run lint` | Chạy ESLint |
-| `npm run report` | Mở HTML report tại `reports/html-report/` |
+| `npm run report` | Mở Playwright HTML report tại `reports/html-report/` |
+| `npm run test:allure` | Chạy test rồi generate Allure report |
+| `npm run allure:generate` | Generate Allure report từ `allure-results/` |
+| `npm run allure:open` | Mở Allure report đã generate |
+| `npm run allure:clean` | Xóa `allure-results/` cũ |
 
 Chọn môi trường qua biến `TEST_ENV` (`dev` | `staging` | `prod`):
 
@@ -50,11 +55,33 @@ $env:TEST_ENV = 'staging'; npm test
 
 Cả ba môi trường hiện trỏ tới cùng SUT public. Khi có môi trường riêng, chỉ cần cập nhật `config/environments.ts`.
 
+## Allure Report
+
+Cả hai project `ui` và `api` đều dùng chung reporter `allure-playwright`, được cấu hình trong `playwright.config.ts`. Kết quả thô nằm trong `allure-results/`; báo cáo HTML được generate vào `allure-report/`. Hai thư mục này đã được ignore trong `.gitignore`.
+
+Chạy local:
+
+```bash
+# Cách 1: chạy test và generate report khi test pass
+npm run test:allure
+
+# Cách 2: chạy riêng từng bước
+npm test
+npm run allure:generate
+npm run allure:open
+```
+
+Các script `test`, `test:ui`, `test:api`, `test:headed`, `test:debug` và `test:allure` đều xóa `allure-results/` cũ trước khi chạy, để report không bị trộn kết quả giữa các lần. Nếu chạy `npx playwright test` trực tiếp, chạy `npm run allure:clean` trước.
+
+`npm run test:allure` dùng `&&`, nên nếu test fail thì report chưa được generate. Khi đó chạy `npm run allure:generate` để tạo report từ kết quả mà Playwright đã ghi lại. Trên CI, job Allure luôn chạy với `if: always()` nên report vẫn được tạo khi test fail.
+
+Một report duy nhất chứa cả UI và API, kèm thông tin môi trường (OS, Node, `TEST_ENV`, CI) và trace/screenshot/video của Playwright khi test fail.
+
 ## Cấu trúc thư mục
 
 ```text
 .
-├── .github/workflows/playwright.yml   # CI matrix ui/api
+├── .github/workflows/playwright.yml   # CI matrix ui/api + Allure Pages
 ├── .mcp.json                          # Playwright MCP cho AI assistant
 ├── ai/                                # Skeleton AI (sidecar, không import vào test)
 │   ├── agents/README.md
@@ -122,10 +149,20 @@ Cả ba môi trường hiện trỏ tới cùng SUT public. Khi có môi trườ
 
 Workflow `.github/workflows/playwright.yml` chạy trên push/PR tới `main` hoặc `develop`, và có thể trigger thủ công. Matrix gồm hai job song song:
 
-- `ui`: cài Chromium rồi chạy `npx playwright test --project=ui`.
-- `api`: không cài browser, chạy `npx playwright test --project=api`.
+- `ui`: cài Chromium rồi chạy `npm run test:ui`.
+- `api`: không cài browser, chạy `npm run test:api`.
 
-Report được upload thành artifact `playwright-report-ui` / `playwright-report-api` trong 7 ngày.
+Ngoài Playwright report, mỗi job matrix upload Allure results riêng (`allure-results-ui`, `allure-results-api`). Job `Generate Allure report` tải và merge hai bộ results, generate một report chung, upload artifact `allure-report` và ghi summary vào trang run.
+
+Với `push` hoặc `workflow_dispatch`, job `Publish Allure report to GitHub Pages` deploy report lên GitHub Pages. Link report xuất hiện ở:
+
+- mục **Environments** / **View deployment** của workflow run;
+- phần **Job Summary** của job publish;
+- URL cố định: `https://<owner>.github.io/<repo>/`.
+
+Nhờ vậy có thể mở report trực tiếp từ GitHub Actions, không cần tải artifact. Với `pull_request`, job publish được bỏ qua để tránh lỗi quyền/Pages environment; report vẫn có trong artifact `allure-report` của run.
+
+**Cấu hình một lần:** vào **Settings → Pages → Build and deployment → Source** và chọn **GitHub Actions**. Nếu Pages chưa được bật, job publish sẽ fail ở bước `Setup Pages`; workflow không tự bật Pages vì `GITHUB_TOKEN` không đủ quyền cho thao tác đó.
 
 ## AI skeleton
 
@@ -147,4 +184,4 @@ npm run test:ui
 npm test
 ```
 
-Tiêu chí hoàn thành: typecheck/lint sạch, `npm test` pass toàn bộ và hoàn tất trong dưới 60 giây trên máy local, HTML report mở được tại `reports/html-report/`.
+Tiêu chí hoàn thành: typecheck/lint sạch, `npm test` pass toàn bộ và hoàn tất trong dưới 60 giây trên máy local, Playwright HTML report mở được tại `reports/html-report/`, Allure report mở được tại `allure-report/`.

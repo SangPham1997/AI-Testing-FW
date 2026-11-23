@@ -7,6 +7,13 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: playwright-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     timeout-minutes: 20
@@ -31,12 +38,120 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run tests
-        run: npx playwright test --project=${{ matrix.project }}
+        run: npm run test:${{ matrix.project }}
 
-      - name: Upload report
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-${{ matrix.project }}
           path: reports/
           retention-days: 7
+
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results-${{ matrix.project }}
+          path: allure-results/
+          retention-days: 7
+          if-no-files-found: warn
+
+  allure-report:
+    name: Generate Allure report
+    needs: test
+    if: always()
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download Allure results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: allure-results-*
+          path: allure-results
+          merge-multiple: true
+
+      - name: Generate combined Allure report
+        run: npm run allure:generate
+
+      - name: Upload Allure report
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report/
+          retention-days: 7
+
+      - name: Add summary to the workflow run
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const summary = JSON.parse(fs.readFileSync('allure-report/summary.json', 'utf8'));
+          const stats = summary.stats ?? {};
+          const lines = [
+            '## Allure report',
+            '',
+            `- Total: **${stats.total ?? 0}**`,
+            `- Passed: **${stats.passed ?? 0}**`,
+            `- Failed: **${stats.failed ?? 0}**`,
+            `- Broken: **${stats.broken ?? 0}**`,
+            `- Skipped: **${stats.skipped ?? 0}**`,
+            '',
+          ];
+          if (process.env.GITHUB_EVENT_NAME === 'pull_request') {
+            lines.push('Download the **allure-report** artifact from this run to open the full report.');
+          } else {
+            lines.push('The full report is published to GitHub Pages by the **Publish Allure report** job.');
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          NODE
+
+  publish-allure:
+    name: Publish Allure report to GitHub Pages
+    needs: allure-report
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Download Allure report
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: allure-report
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Add report link to the workflow run
+        run: |
+          echo "## Allure report published" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "[Open the Allure report](${{ steps.deployment.outputs.page_url }})" >> "$GITHUB_STEP_SUMMARY"

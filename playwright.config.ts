@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import * as os from 'node:os';
 import { environments } from './config/environments';
 
 export default defineConfig({
@@ -12,6 +13,22 @@ export default defineConfig({
     ['list'],
     ['html', { outputFolder: 'reports/html-report', open: 'never' }],
     ['junit', { outputFile: 'reports/junit.xml' }],
+    [
+      'allure-playwright',
+      {
+        resultsDir: 'allure-results',
+        detail: true,
+        suiteTitle: true,
+        environmentInfo: {
+          os_platform: os.platform(),
+          os_release: os.release(),
+          os_version: os.version(),
+          node_version: process.version,
+          test_env: process.env.TEST_ENV ?? 'dev',
+          ci: process.env.CI === 'true' ? 'true' : 'false',
+        },
+      },
+    ],
   ],
   projects: [
     {
